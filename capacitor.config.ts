@@ -1,17 +1,15 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
-const deployedUrl = process.env.CAPACITOR_SERVER_URL;
+const deployedUrl = process.env.CAPACITOR_SERVER_URL || "https://lostmate-ai.netlify.app";
 
 const config: CapacitorConfig = {
   appId: "ai.lostmate.app",
   appName: "LostMate AI",
   webDir: "public",
-  server: deployedUrl
-    ? {
-        url: deployedUrl,
-        cleartext: false,
-      }
-    : undefined,
+  server: {
+    url: deployedUrl,
+    cleartext: false,
+  },
   plugins: {
     SplashScreen: {
       launchAutoHide: true,

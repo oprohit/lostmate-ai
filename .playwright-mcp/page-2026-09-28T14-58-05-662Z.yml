@@ -1,0 +1,5 @@
+- generic [active] [ref=e1]:
+  - paragraph [ref=e2]: LostMate AI loads from the configured deployment URL.
+  - iframe [ref=e3]:
+    - button "Powered by Netlify — build your own site" [ref=f1e3] [cursor=pointer]:
+      - generic [ref=f1e13]: Powered by Netlify
