@@ -99,6 +99,7 @@ type Match = {
 
 type Claim = {
   id: string;
+  matchId?: string | null;
   status: "pending" | "approved" | "completed" | "rejected";
   reportId: string;
   itemType: string;
@@ -150,7 +151,7 @@ function titleFor(view: View, user: User | null) {
   if (view === "found") return "Report found item";
   if (view === "reports") return user?.role === "staff" || user?.role === "admin" ? "Report queue" : "My reports";
   if (view === "matches") return "Possible matches";
-  if (view === "claims") return "Claims & handovers";
+  if (view === "claims") return user?.role === "staff" || user?.role === "admin" ? "Claims & handovers" : "My claims";
   if (view === "dashboard") return "Staff overview";
   return "Home";
 }
@@ -265,7 +266,7 @@ function AppShell({ user, view, setView, onLogout, children }: { user: User; vie
   const staff = user.role === "staff" || user.role === "admin";
   const nav = staff
     ? [{ id: "dashboard" as View, label: "Overview", icon: LayoutDashboard }, { id: "reports" as View, label: "Reports", icon: ClipboardList }, { id: "matches" as View, label: "Matches", icon: Sparkles }, { id: "claims" as View, label: "Claims", icon: Hand }]
-    : [{ id: "assistant" as View, label: "Report with AI", icon: MessageCircle }, { id: "found" as View, label: "Found item", icon: PackageCheck }, { id: "reports" as View, label: "My reports", icon: ClipboardList }, { id: "matches" as View, label: "Matches", icon: Sparkles }];
+    : [{ id: "assistant" as View, label: "Report with AI", icon: MessageCircle }, { id: "found" as View, label: "Found item", icon: PackageCheck }, { id: "reports" as View, label: "My reports", icon: ClipboardList }, { id: "matches" as View, label: "Matches", icon: Sparkles }, { id: "claims" as View, label: "My claims", icon: Hand }];
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -278,7 +279,7 @@ function AppShell({ user, view, setView, onLogout, children }: { user: User; vie
       <div className="app-content">
         <header className="app-header"><div className="app-header__left"><button className="mobile-menu icon-button" aria-label="Open navigation"><Menu size={20} /></button><div><div className="mobile-brand"><span className="logo-mark"><Sparkles size={14} /></span>LOSTMATE <em>AI</em></div><div className="app-header__title">{titleFor(view, user)}</div></div></div><div className="app-header__right"><span className="status-dot" /> <span className="desktop-only">All systems operational</span><span className="avatar avatar--header" style={{ background: user.avatarColor }}>{initials(user.name)}</span></div></header>
         <main className="app-main">{children}</main>
-        <nav className="mobile-bottom-nav">{nav.slice(0, 4).map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? "is-active" : ""} onClick={() => setView(item.id)}><Icon size={20} /><span>{item.label.replace("Report with AI", "Report")}</span></button>; })}</nav>
+        <nav className="mobile-bottom-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? "is-active" : ""} onClick={() => setView(item.id)}><Icon size={20} /><span>{item.label.replace("Report with AI", "Report").replace("My reports", "Reports").replace("My claims", "Claims")}</span></button>; })}</nav>
       </div>
     </div>
   );
@@ -398,27 +399,321 @@ function ReportCard({ report, staff }: { report: Report; staff: boolean }) {
 
 function StatusPill({ status }: { status: string }) { return <span className={`status-pill status-pill--${status}`}>{status === "open" ? "Active" : status === "suggested" ? "Suggested" : status}</span>; }
 
-function MatchesPage({ user }: { user: User }) {
-  const [matches, setMatches] = useState<Match[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [action, setAction] = useState("");
-  async function load() { setLoading(true); try { const data = await api<{ matches: Match[] }>("/api/matches"); setMatches(data.matches); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load matches."); } finally { setLoading(false); } }
-  useEffect(() => { load(); }, []);
-  async function review(match: Match, status: "accepted" | "rejected") { setAction(match.id); try { await api(`/api/matches/${match.id}`, { method: "PATCH", body: JSON.stringify({ status }) }); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to review match."); } finally { setAction(""); } }
-  async function claim(match: Match) { const report = match.foundReport; if (!report) return; setAction(match.id); try { await api("/api/claims", { method: "POST", body: JSON.stringify({ reportId: report.id, matchId: match.id, notes: "Claim requested from a possible match." }) }); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to submit claim."); } finally { setAction(""); } }
+function MatchesPage({ user, onNavigate }: { user: User; onNavigate: (view: View) => void }) {
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [claimsMap, setClaimsMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [action, setAction] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function load(initial = false) {
+    if (initial) setLoading(true);
+    try {
+      const [matchesRes, claimsRes] = await Promise.all([
+        api<{ matches: Match[] }>("/api/matches"),
+        api<{ claims: Claim[] }>("/api/claims").catch(() => ({ claims: [] }))
+      ]);
+      setMatches(matchesRes.matches);
+      const map: Record<string, string> = {};
+      for (const c of claimsRes.claims) {
+        if (c.matchId) map[c.matchId] = c.status;
+      }
+      setClaimsMap(map);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load matches.");
+    } finally {
+      if (initial) setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(true); }, []);
+
+  async function review(match: Match, status: "accepted" | "rejected") {
+    setAction(match.id);
+    try {
+      await api(`/api/matches/${match.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await load(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to review match.");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function claim(match: Match) {
+    const report = match.foundReport;
+    if (!report) return;
+    setAction(match.id);
+    try {
+      await api("/api/claims", {
+        method: "POST",
+        body: JSON.stringify({
+          reportId: report.id,
+          matchId: match.id,
+          notes: "Claim requested from a possible match."
+        })
+      });
+      setClaimsMap((prev) => ({ ...prev, [match.id]: "pending" }));
+      setNotice(`Claim requested for "${report.color ? `${report.color} ` : ""}${report.itemType}". Staff will verify the details before handover.`);
+      await load(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to submit claim.");
+    } finally {
+      setAction("");
+    }
+  }
+
   const staff = user.role === "staff" || user.role === "admin";
-  return <section className="list-page"><div className="list-page__heading"><div><div className="eyebrow">AI-assisted, human-verified</div><h1>Possible matches</h1><p>Signals, not certainty. Take a closer look before you make a connection.</p></div><span className="confidence-legend"><span /> confidence score</span></div>{loading ? <LoadingState label="Looking for connections" /> : error ? <ErrorState message={error} /> : matches.length ? <div className="match-list">{matches.map((match) => <MatchCard key={match.id} match={match} staff={staff} action={action} onReview={review} onClaim={claim} />)}</div> : <EmptyState icon={<Sparkles size={23} />} title="No possible matches yet" copy="New reports are compared automatically. We’ll let you know when the details line up." />}</section>;
+  return (
+    <section className="list-page">
+      <div className="list-page__heading">
+        <div>
+          <div className="eyebrow">AI-assisted, human-verified</div>
+          <h1>Possible matches</h1>
+          <p>Signals, not certainty. Take a closer look before you make a connection.</p>
+        </div>
+        <span className="confidence-legend"><span /> confidence score</span>
+      </div>
+      {notice && (
+        <div className="notice-banner notice-banner--success">
+          <CheckCircle2 size={18} />
+          <div>
+            <strong>Claim request submitted!</strong>
+            <p>{notice}</p>
+          </div>
+          <button className="button button--secondary" onClick={() => onNavigate("claims")}>
+            View my claims →
+          </button>
+        </div>
+      )}
+      {loading ? (
+        <LoadingState label="Looking for connections" />
+      ) : error ? (
+        <ErrorState message={error} />
+      ) : matches.length ? (
+        <div className="match-list">
+          {matches.map((match) => (
+            <MatchCard
+              key={match.id}
+              match={match}
+              staff={staff}
+              action={action}
+              claimStatus={claimsMap[match.id]}
+              onReview={review}
+              onClaim={claim}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<Sparkles size={23} />}
+          title="No possible matches yet"
+          copy="New reports are compared automatically. We’ll let you know when the details line up."
+        />
+      )}
+    </section>
+  );
 }
 
-function MatchCard({ match, staff, action, onReview, onClaim }: { match: Match; staff: boolean; action: string; onReview: (match: Match, status: "accepted" | "rejected") => void; onClaim: (match: Match) => void }) {
-  const lost = match.lostReport; const found = match.foundReport;
-  return <article className="match-card"><div className="match-card__top"><div className="match-score"><span>{Math.round(match.confidence * 100)}%</span><small>possible match</small></div><StatusPill status={match.status} /></div><div className="match-pair"><div className="match-item"><span className="match-item__label">LOST</span><strong>{lost?.color ? `${lost.color} ` : ""}{lost?.itemType ?? "Unknown item"}</strong><span><MapPin size={13} />{lost?.location ?? "Location unavailable"}</span></div><div className="match-connector"><span><Sparkles size={14} /></span><i /></div><div className="match-item match-item--found"><span className="match-item__label">FOUND</span><strong>{found?.color ? `${found.color} ` : ""}{found?.itemType ?? "Unknown item"}</strong><span><MapPin size={13} />{found?.location ?? "Location unavailable"}</span></div></div><div className="match-reason"><Sparkles size={15} /><div><strong>Why this surfaced</strong><p>{match.explanation}</p></div></div>{staff && match.status === "suggested" ? <div className="match-actions"><button className="button button--ghost" onClick={() => onReview(match, "rejected")} disabled={action === match.id}>Not a match</button><button className="button button--primary" onClick={() => onReview(match, "accepted")} disabled={action === match.id}>{action === match.id ? <Loader2 className="spin" size={15} /> : <Check size={15} />} Review as match</button></div> : !staff && match.status !== "rejected" && found ? <button className="button button--secondary button--wide" onClick={() => onClaim(match)} disabled={action === match.id}>{action === match.id ? <Loader2 className="spin" size={15} /> : <Hand size={15} />} Request to claim found item</button> : null}</article>;
+function MatchCard({
+  match,
+  staff,
+  action,
+  claimStatus,
+  onReview,
+  onClaim
+}: {
+  match: Match;
+  staff: boolean;
+  action: string;
+  claimStatus?: string;
+  onReview: (match: Match, status: "accepted" | "rejected") => void;
+  onClaim: (match: Match) => void;
+}) {
+  const lost = match.lostReport;
+  const found = match.foundReport;
+  return (
+    <article className="match-card">
+      <div className="match-card__top">
+        <div className="match-score">
+          <span>{Math.round(match.confidence * 100)}%</span>
+          <small>possible match</small>
+        </div>
+        <StatusPill status={match.status} />
+      </div>
+      <div className="match-pair">
+        <div className="match-item">
+          <span className="match-item__label">LOST</span>
+          <strong>{lost?.color ? `${lost.color} ` : ""}{lost?.itemType ?? "Unknown item"}</strong>
+          <span><MapPin size={13} />{lost?.location ?? "Location unavailable"}</span>
+        </div>
+        <div className="match-connector">
+          <span><Sparkles size={14} /></span>
+          <i />
+        </div>
+        <div className="match-item match-item--found">
+          <span className="match-item__label">FOUND</span>
+          <strong>{found?.color ? `${found.color} ` : ""}{found?.itemType ?? "Unknown item"}</strong>
+          <span><MapPin size={13} />{found?.location ?? "Location unavailable"}</span>
+        </div>
+      </div>
+      <div className="match-reason">
+        <Sparkles size={15} />
+        <div>
+          <strong>Why this surfaced</strong>
+          <p>{match.explanation}</p>
+        </div>
+      </div>
+      {staff && match.status === "suggested" ? (
+        <div className="match-actions">
+          <button className="button button--ghost" onClick={() => onReview(match, "rejected")} disabled={action === match.id}>
+            Not a match
+          </button>
+          <button className="button button--primary" onClick={() => onReview(match, "accepted")} disabled={action === match.id}>
+            {action === match.id ? <Loader2 className="spin" size={15} /> : <Check size={15} />} Review as match
+          </button>
+        </div>
+      ) : !staff && match.status !== "rejected" && found ? (
+        claimStatus === "pending" ? (
+          <div className="claim-status-badge claim-status-badge--pending">
+            <Clock3 size={15} /> Claim requested · Pending staff review
+          </div>
+        ) : claimStatus === "approved" ? (
+          <div className="claim-status-badge claim-status-badge--approved">
+            <Check size={15} /> Claim approved · Ready for handover
+          </div>
+        ) : claimStatus === "completed" ? (
+          <div className="claim-status-badge claim-status-badge--completed">
+            <PackageCheck size={15} /> Item returned & handed over
+          </div>
+        ) : (
+          <button
+            className="button button--secondary button--wide"
+            onClick={() => onClaim(match)}
+            disabled={action === match.id}
+          >
+            {action === match.id ? <Loader2 className="spin" size={15} /> : <Hand size={15} />} Request to claim found item
+          </button>
+        )
+      ) : null}
+    </article>
+  );
 }
 
-function ClaimsPage() {
-  const [claims, setClaims] = useState<Claim[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [action, setAction] = useState("");
-  async function load() { setLoading(true); try { const data = await api<{ claims: Claim[] }>("/api/claims"); setClaims(data.claims); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load claims."); } finally { setLoading(false); } }
+function ClaimsPage({ user }: { user: User }) {
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [action, setAction] = useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const data = await api<{ claims: Claim[] }>("/api/claims");
+      setClaims(data.claims);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load claims.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => { load(); }, []);
-  async function updateClaim(claim: Claim, status: "approved" | "completed" | "rejected") { setAction(claim.id); try { await api(`/api/claims/${claim.id}`, { method: "PATCH", body: JSON.stringify({ status, handoverLocation: status === "completed" ? "Student services desk" : "" }) }); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to update claim."); } finally { setAction(""); } }
-  return <section className="list-page"><div className="list-page__heading"><div><div className="eyebrow">Closing the loop</div><h1>Claims & handovers</h1><p>Make the final step clear, careful, and human.</p></div><span className="list-count">{claims.length} open records</span></div>{loading ? <LoadingState label="Loading claims" /> : error ? <ErrorState message={error} /> : claims.length ? <div className="claims-list">{claims.map((claim) => <article className="claim-card" key={claim.id}><div className="claim-card__main"><span className="claim-icon"><Hand size={18} /></span><div><div className="claim-card__title"><strong>{claim.itemType}</strong><StatusPill status={claim.status} /></div><p>{claim.claimantName} · {claim.claimantEmail}</p><span><MapPin size={14} /> {claim.reportLocation} · {formatRelative(claim.createdAt)}</span></div></div><div className="claim-card__actions">{claim.status === "pending" && <><button className="button button--ghost" onClick={() => updateClaim(claim, "rejected")} disabled={action === claim.id}>Reject</button><button className="button button--secondary" onClick={() => updateClaim(claim, "approved")} disabled={action === claim.id}>Approve</button></>}{claim.status === "approved" && <button className="button button--primary" onClick={() => updateClaim(claim, "completed")} disabled={action === claim.id}>{action === claim.id ? <Loader2 className="spin" size={15} /> : <Check size={15} />} Mark handed over</button>}</div></article>)}</div> : <EmptyState icon={<Hand size={23} />} title="No claims waiting" copy="Approved or pending handovers will appear here." />}</section>;
+
+  async function updateClaim(claim: Claim, status: "approved" | "completed" | "rejected") {
+    setAction(claim.id);
+    try {
+      await api(`/api/claims/${claim.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+          handoverLocation: status === "completed" ? (claim.handoverLocation || "Student services desk") : "Student services desk"
+        })
+      });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update claim.");
+    } finally {
+      setAction("");
+    }
+  }
+
+  const staff = user.role === "staff" || user.role === "admin";
+  return (
+    <section className="list-page">
+      <div className="list-page__heading">
+        <div>
+          <div className="eyebrow">{staff ? "Closing the loop" : "Your claim requests"}</div>
+          <h1>{staff ? "Claims & handovers" : "My claims"}</h1>
+          <p>{staff ? "Make the final step clear, careful, and human." : "Track the review status and pickup details for your claimed items."}</p>
+        </div>
+        <span className="list-count">{claims.length} {claims.length === 1 ? "record" : "records"}</span>
+      </div>
+      {loading ? (
+        <LoadingState label="Loading claims" />
+      ) : error ? (
+        <ErrorState message={error} />
+      ) : claims.length ? (
+        <div className="claims-list">
+          {claims.map((claim) => (
+            <article className="claim-card" key={claim.id}>
+              <div className="claim-card__main">
+                <span className="claim-icon"><Hand size={18} /></span>
+                <div>
+                  <div className="claim-card__title">
+                    <strong>{claim.itemType}</strong>
+                    <StatusPill status={claim.status} />
+                  </div>
+                  <p>{claim.claimantName}{staff ? ` · ${claim.claimantEmail}` : ""}</p>
+                  <span><MapPin size={14} /> {claim.reportLocation} · {formatRelative(claim.createdAt)}</span>
+                  {claim.handoverLocation && (
+                    <span style={{ color: "var(--mint)", marginTop: "4px" }}>
+                      <CheckCircle2 size={13} /> Pickup at: {claim.handoverLocation}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="claim-card__actions">
+                {staff ? (
+                  <>
+                    {claim.status === "pending" && (
+                      <>
+                        <button className="button button--ghost" onClick={() => updateClaim(claim, "rejected")} disabled={action === claim.id}>
+                          Reject
+                        </button>
+                        <button className="button button--secondary" onClick={() => updateClaim(claim, "approved")} disabled={action === claim.id}>
+                          Approve
+                        </button>
+                      </>
+                    )}
+                    {claim.status === "approved" && (
+                      <button className="button button--primary" onClick={() => updateClaim(claim, "completed")} disabled={action === claim.id}>
+                        {action === claim.id ? <Loader2 className="spin" size={15} /> : <Check size={15} />} Mark handed over
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className={`claim-status-badge claim-status-badge--${claim.status}`} style={{ margin: 0, padding: "6px 12px", width: "auto" }}>
+                    {claim.status === "pending" && <><Clock3 size={13} /> Pending staff review</>}
+                    {claim.status === "approved" && <><Check size={13} /> Approved for pickup</>}
+                    {claim.status === "completed" && <><PackageCheck size={13} /> Handed over</>}
+                    {claim.status === "rejected" && <><CircleAlert size={13} /> Verification rejected</>}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<Hand size={23} />}
+          title={staff ? "No claims waiting" : "No claims submitted yet"}
+          copy={staff ? "Approved or pending handovers will appear here." : "When you request to claim a found match, it will appear here."}
+        />
+      )}
+    </section>
+  );
 }
 
 function Dashboard({ onNavigate, compact = false }: { onNavigate: (view: View) => void; compact?: boolean }) {
@@ -452,8 +747,8 @@ export default function LostMateApp() {
   if (view === "assistant") content = <AssistantPage user={user} onCreated={() => setView("matches")} />;
   if (view === "found") content = <FoundForm onCreated={() => setView("matches")} />;
   if (view === "reports") content = <ReportsPage user={user} />;
-  if (view === "matches") content = <MatchesPage user={user} />;
-  if (view === "claims") content = <ClaimsPage />;
+  if (view === "matches") content = <MatchesPage user={user} onNavigate={setView} />;
+  if (view === "claims") content = <ClaimsPage user={user} />;
   if (view === "dashboard") content = <Dashboard onNavigate={setView} />;
   return <AppShell user={user} view={view} setView={setView} onLogout={logout}>{content}</AppShell>;
 }
