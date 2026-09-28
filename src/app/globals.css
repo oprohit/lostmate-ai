@@ -107,6 +107,43 @@ a { color: inherit; text-decoration: none; }
 .claim-status-badge--completed { border: 1px solid rgba(197, 188, 255, 0.25); background: rgba(197, 188, 255, 0.08); color: var(--purple-light); }
 .claim-status-badge--rejected { border: 1px solid rgba(255, 120, 120, 0.25); background: rgba(255, 120, 120, 0.08); color: var(--danger); }
 
+/* Mobile Drawer & Profile Menu */
+.mobile-drawer-backdrop { position: fixed; z-index: 999; inset: 0; background: rgba(3,3,15,.75); backdrop-filter: blur(8px); display: flex; align-items: stretch; }
+.mobile-drawer { width: min(85vw, 290px); height: 100%; background: #0d0d20; border-right: 1px solid var(--line); padding: 22px 16px; display: flex; flex-direction: column; overflow-y: auto; animation: drawerIn .22s cubic-bezier(.16,1,.3,1); }
+.mobile-drawer__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.mobile-drawer__head .brand-lockup { padding: 0; }
+.mobile-drawer__head .icon-button { width: 34px; height: 34px; }
+.mobile-drawer .workspace-label { margin: 15px 10px 10px; }
+.mobile-drawer .side-nav { margin-bottom: 20px; }
+.mobile-drawer .sidebar-help { margin-top: auto; margin-bottom: 16px; }
+.mobile-drawer__user { display: flex; align-items: center; gap: 9px; padding-top: 14px; border-top: 1px solid var(--line); }
+.mobile-drawer__user .avatar { flex: 0 0 auto; }
+.mobile-drawer__user div { min-width: 0; flex: 1; }
+.mobile-drawer__user strong, .mobile-drawer__user span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-drawer__user strong { color: #fff; font-size: 11px; }
+.mobile-drawer__user div span { margin-top: 3px; color: var(--muted-2); font-size: 9px; }
+
+.profile-sheet { position: fixed; z-index: 1000; bottom: 0; left: 0; right: 0; background: #14142a; border-top: 1px solid var(--line-strong); border-radius: 20px 20px 0 0; padding: 22px 20px calc(24px + env(safe-area-inset-bottom)); animation: sheetIn .22s cubic-bezier(.16,1,.3,1); }
+@media (min-width: 761px) {
+  .profile-sheet { position: fixed; top: 74px; right: 28px; bottom: auto; left: auto; width: 310px; border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.5); animation: fadeIn .15s ease; }
+}
+.profile-sheet__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.profile-sheet__identity { display: flex; align-items: center; gap: 13px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.03); margin-bottom: 16px; }
+.avatar--large { width: 42px; height: 42px; font-size: 13px; font-weight: 800; flex: 0 0 auto; }
+.profile-sheet__identity div { min-width: 0; flex: 1; }
+.profile-sheet__identity strong { display: block; font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-sheet__identity span { display: block; font-size: 10px; color: var(--muted-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-tag { display: inline-block !important; margin-top: 5px !important; padding: 2px 7px; border-radius: 4px; font-size: 8px !important; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; background: rgba(197,188,255,.12); color: var(--purple-light) !important; }
+.profile-sheet__actions { display: grid; gap: 8px; }
+.button--danger { border: 1px solid rgba(244,154,171,.25) !important; background: rgba(244,154,171,.08) !important; color: var(--danger) !important; }
+.button--danger:hover { background: rgba(244,154,171,.16) !important; }
+.avatar-button { border: 0; padding: 0; cursor: pointer; outline: none; }
+.avatar-button:active { transform: scale(.93); }
+
+@keyframes drawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes sheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+
 
 @media (max-width: 980px) {
   .hero { grid-template-columns: 1fr minmax(360px, .85fr); gap: 25px; }.floating-note--top { right: -5px; }.floating-note--bottom { left: -5px; }.form-layout { gap: 35px; }.assistant-layout { gap: 22px; }.app-main { padding-inline: 27px; }.app-header { padding-inline: 27px; }

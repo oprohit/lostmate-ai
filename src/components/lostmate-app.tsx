@@ -263,6 +263,8 @@ function TrustItem({ icon, title, copy }: { icon: React.ReactNode; title: string
 }
 
 function AppShell({ user, view, setView, onLogout, children }: { user: User; view: View; setView: (view: View) => void; onLogout: () => void; children: React.ReactNode }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const staff = user.role === "staff" || user.role === "admin";
   const nav = staff
     ? [{ id: "dashboard" as View, label: "Overview", icon: LayoutDashboard }, { id: "reports" as View, label: "Reports", icon: ClipboardList }, { id: "matches" as View, label: "Matches", icon: Sparkles }, { id: "claims" as View, label: "Claims", icon: Hand }]
@@ -277,9 +279,113 @@ function AppShell({ user, view, setView, onLogout, children }: { user: User; vie
         <div className="sidebar-user"><span className="avatar" style={{ background: user.avatarColor }}>{initials(user.name)}</span><div><strong>{user.name}</strong><span>{staff ? "Staff member" : user.email}</span></div><button className="icon-button" aria-label="Log out" onClick={onLogout}><LogOut size={16} /></button></div>
       </aside>
       <div className="app-content">
-        <header className="app-header"><div className="app-header__left"><button className="mobile-menu icon-button" aria-label="Open navigation"><Menu size={20} /></button><div><div className="mobile-brand"><span className="logo-mark"><Sparkles size={14} /></span>LOSTMATE <em>AI</em></div><div className="app-header__title">{titleFor(view, user)}</div></div></div><div className="app-header__right"><span className="status-dot" /> <span className="desktop-only">All systems operational</span><span className="avatar avatar--header" style={{ background: user.avatarColor }}>{initials(user.name)}</span></div></header>
+        <header className="app-header">
+          <div className="app-header__left">
+            <button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => setMenuOpen(true)}>
+              <Menu size={20} />
+            </button>
+            <div>
+              <div className="mobile-brand"><span className="logo-mark"><Sparkles size={14} /></span>LOSTMATE <em>AI</em></div>
+              <div className="app-header__title">{titleFor(view, user)}</div>
+            </div>
+          </div>
+          <div className="app-header__right">
+            <span className="status-dot" /> <span className="desktop-only">All systems operational</span>
+            <button className="avatar avatar--header avatar-button" style={{ background: user.avatarColor }} aria-label="Open profile menu" onClick={() => setProfileOpen(true)}>
+              {initials(user.name)}
+            </button>
+          </div>
+        </header>
         <main className="app-main">{children}</main>
         <nav className="mobile-bottom-nav">{nav.map((item) => { const Icon = item.icon; return <button key={item.id} className={view === item.id ? "is-active" : ""} onClick={() => setView(item.id)}><Icon size={20} /><span>{item.label.replace("Report with AI", "Report").replace("My reports", "Reports").replace("My claims", "Claims")}</span></button>; })}</nav>
+
+        {menuOpen && (
+          <div className="mobile-drawer-backdrop" onClick={() => setMenuOpen(false)}>
+            <div className="mobile-drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="mobile-drawer__head">
+                <div className="brand-lockup">
+                  <span className="logo-mark"><Sparkles size={16} /></span>
+                  <span>LOSTMATE <em>AI</em></span>
+                </div>
+                <button className="icon-button" onClick={() => setMenuOpen(false)} aria-label="Close menu">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="workspace-label">{staff ? "STAFF WORKSPACE" : "YOUR SPACE"}</div>
+              <nav className="side-nav">
+                {nav.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      className={`side-nav__item ${view === item.id ? "is-active" : ""}`}
+                      onClick={() => {
+                        setView(item.id);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                      {view === item.id && <ChevronRight size={15} />}
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="sidebar-help">
+                <span className="help-icon"><ShieldCheck size={17} /></span>
+                <strong>{staff ? "Verification desk" : "Need a hand?"}</strong>
+                <p>{staff ? "Every handoff is a moment of trust." : "Our AI assistant is ready whenever you are."}</p>
+                <button onClick={() => { setView(staff ? "claims" : "assistant"); setMenuOpen(false); }}>
+                  {staff ? "Open claims" : "Ask LostMate"} <ArrowUpRight size={14} />
+                </button>
+              </div>
+              <div className="mobile-drawer__user">
+                <span className="avatar" style={{ background: user.avatarColor }}>{initials(user.name)}</span>
+                <div>
+                  <strong>{user.name}</strong>
+                  <span>{staff ? "Staff member" : user.email}</span>
+                </div>
+                <button className="icon-button" aria-label="Log out" onClick={() => { setMenuOpen(false); onLogout(); }}>
+                  <LogOut size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {profileOpen && (
+          <div className="mobile-drawer-backdrop" onClick={() => setProfileOpen(false)}>
+            <div className="profile-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="profile-sheet__head">
+                <span className="eyebrow">Account</span>
+                <button className="icon-button" onClick={() => setProfileOpen(false)} aria-label="Close profile">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="profile-sheet__identity">
+                <span className="avatar avatar--large" style={{ background: user.avatarColor }}>
+                  {initials(user.name)}
+                </span>
+                <div>
+                  <strong>{user.name}</strong>
+                  <span>{user.email}</span>
+                  <span className="role-tag">{staff ? "Staff Member" : "Community Member"}</span>
+                </div>
+              </div>
+              <div className="profile-sheet__actions">
+                <button className="button button--secondary button--wide" onClick={() => { setView("reports"); setProfileOpen(false); }}>
+                  <ClipboardList size={16} /> {staff ? "Report queue" : "My reports"}
+                </button>
+                <button className="button button--secondary button--wide" onClick={() => { setView("claims"); setProfileOpen(false); }}>
+                  <Hand size={16} /> {staff ? "Claims & handovers" : "My claims"}
+                </button>
+                <button className="button button--danger button--wide" onClick={() => { setProfileOpen(false); onLogout(); }}>
+                  <LogOut size={16} /> Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
